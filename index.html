@@ -34,15 +34,41 @@ button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
 .empty{color:var(--mut);text-align:center;margin-top:40px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
+@keyframes pop{0%{opacity:0;transform:translateY(14px) scale(.96)}60%{transform:translateY(-2px) scale(1.01)}100%{opacity:1;transform:none}}
+@keyframes ok{0%{box-shadow:0 0 0 0 rgba(26,115,232,.55)}100%{box-shadow:0 0 0 14px rgba(26,115,232,0)}}
+@keyframes out{to{opacity:0;transform:translateX(40px)}}
+@keyframes sp{0%{transform:translateY(-40px);opacity:0}50%{transform:translateY(0);opacity:1}70%{transform:translateY(-14px)}100%{transform:translateY(0)}}
+@keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card.pop{animation:pop .45s ease both}
+.card.ok{animation:ok .7s ease-out}
+.card.out{animation:out .26s ease forwards}
+#splash{position:fixed;inset:0;z-index:50;background:var(--pri);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .4s}
+#splash.hide{opacity:0;pointer-events:none}
+#splash .pin{font-size:72px;animation:sp .9s ease both}
+#splash b{font-size:26px;margin-top:10px;animation:fi .6s .4s ease both}
+main{animation:fi .5s .8s ease both}
+#tut{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px}
+#tut.on{display:flex}
+#tut .bx{background:var(--card);border-radius:18px;max-width:420px;width:100%;padding:22px;text-align:center}
+#tut .ic{font-size:46px}
+#tut h2{margin:6px 0;font-size:20px}
+#tut p{color:var(--mut);margin:6px 0 14px;white-space:pre-line}
+.dots{display:flex;gap:6px;justify-content:center;margin:8px 0 14px}
+.dots i{width:8px;height:8px;border-radius:50%;background:var(--bd)}
+.dots i.a{background:var(--pri)}
+#tut .row button{flex:1}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
+<div id="splash"><div class="pin">📍</div><b>Mis Lugares</b></div>
 <main>
 <h1>📍 Mis Lugares</h1>
 <div class="bar">
   <button class="s" id="cuenta">☁️ Iniciar con Google</button>
   <button class="s" id="exp">💾 Exportar</button>
   <button class="s" id="imp">📂 Importar</button>
+  <button class="s" id="ayuda">❓ Ayuda</button>
   <input type="file" id="file" accept=".json,application/json" hidden>
   <span class="st" id="st"></span>
 </div>
@@ -55,13 +81,15 @@ button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
 <div id="lista"></div>
 <p class="hint">Toca un nombre para abrir su link en Google Maps. Los links quedan ocultos.</p>
 </main>
+<div id="tut"><div class="bx" id="tBx"><div class="ic" id="tIc"></div><h2 id="tTi"></h2><p id="tTx"></p><div class="dots" id="tDots"></div><div class="row"><button class="s" id="tSk">Saltar</button><button class="s" id="tPr">Atrás</button><button id="tNx">Siguiente</button></div></div></div>
 <div class="toast" id="toast"></div>
+<script src="config.js"></script>
 <script>
 (function(){
-// ===== CONFIGURACIÓN DE FIREBASE (pega aquí tus datos; ver guía) =====
-var FB={apiKey:"AIzaSyC2nCphNSMO1PpVofWuzccoebT79-Ls798",authDomain:"lugares-d3281.firebaseapp.com",projectId:"lugares-d3281",appId:"1:749185293345:web:9d28b3a8f88f2195069760"};
+// ===== Los datos de Firebase ahora van en el archivo config.js =====
+var FB=window.FB_CONFIG||{apiKey:""};
 // ======================================================================
-var KEY="lugares_v1",items=[],mem=null,user=null,db=null,timer=null,openBox={};
+var KEY="lugares_v1",items=[],mem=null,user=null,db=null,timer=null,openBox={},anim={};
 var $=function(i){return document.getElementById(i)};
 function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2000)}
 function setSt(t){$("st").textContent=t}
@@ -89,7 +117,7 @@ function render(){
   if(!act.length){c.innerHTML='<p class="empty">Aún no hay nombres. Agrega el primero arriba.</p>';return}
   if(!vis.length){c.innerHTML='<p class="empty">Nada coincide con la búsqueda.</p>';return}
   vis.forEach(function(it){
-    var card=el("div","card");
+    var card=el("div","card"+(anim[it.id]?" "+anim[it.id]:""));delete anim[it.id];
     card.appendChild(btn("nm"+(it.link?" on":""),(it.link?"📍 ":"")+it.name,function(){if(it.link)abrir(it.link);else{openBox[it.id]=true;render()}}));
     if(it.ref)card.appendChild(el("div","ref","📝 "+it.ref));
     if(openBox[it.id]||(!it.link&&!it.done)){
@@ -97,7 +125,7 @@ function render(){
       var tr=el("textarea");tr.placeholder="Referencia escrita (ej: frente al parque, 2.º piso, local 5)";tr.value=it.ref||"";
       var r=el("div","acts");
       r.appendChild(btn("s","📋 Pegar link",function(){readClip(function(t){tl.value=t})}));
-      r.appendChild(btn("","Guardar y ocultar",function(){it.link=tl.value;it.ref=tr.value;it.done=true;it.t=Date.now();delete openBox[it.id];save();render();toast("Guardado")}));
+      r.appendChild(btn("","Guardar y ocultar",function(){it.link=tl.value;it.ref=tr.value;it.done=true;it.t=Date.now();delete openBox[it.id];anim[it.id]="ok";save();render();toast("Guardado")}));
       card.appendChild(tl);card.appendChild(tr);card.appendChild(r);
     }else{
       var a=el("div","acts");
@@ -107,14 +135,14 @@ function render(){
     }
     var m=el("div","acts");
     m.appendChild(btn("s","✏️ Nombre",function(){var n=prompt("Nuevo nombre",it.name);if(n){it.name=n;it.t=Date.now();save();render()}}));
-    m.appendChild(btn("d","🗑 Borrar",function(){if(confirm("¿Borrar “"+it.name+"”?")){it.del=true;it.t=Date.now();save();render()}}));
+    m.appendChild(btn("d","🗑 Borrar",function(){if(confirm("¿Borrar “"+it.name+"”?")){card.classList.add("out");setTimeout(function(){it.del=true;it.t=Date.now();save();render()},260)}}));
     card.appendChild(m);c.appendChild(card);
   });
 }
 var inp=$("nuevo");
 function add(){var n=inp.value;if(!n.length){toast("Escribe un nombre");return}
   var now=Date.now(),it={id:uid(),name:n,link:"",ref:"",c:now,t:now};
-  items.unshift(it);openBox[it.id]=true;inp.value="";$("buscar").value="";save();render();
+  items.unshift(it);anim[it.id]="pop";openBox[it.id]=true;inp.value="";$("buscar").value="";save();render();
   var ta=document.querySelector("textarea");if(ta)ta.focus()}
 $("agregar").onclick=add;
 inp.addEventListener("keydown",function(e){if(e.key==="Enter")add()});
@@ -144,6 +172,25 @@ function initCloud(){if(!FB.apiKey||!navigator.onLine&&false)return;
 function start(){firebase.initializeApp(FB);db=firebase.firestore();
   firebase.auth().onAuthStateChanged(function(u){user=u;ui();
     if(u){setSt("☁️ Sincronizando…");db.collection("users").doc(u.uid).get().then(function(d){if(d.exists)merge(d.data().items);save();render()}).catch(function(){setSt("⚠️ Sin conexión")})}})}
+// Tutorial
+var TS=[["📍","Bienvenido","Aquí guardas lugares con su link de Google Maps oculto.\nTe muestro cómo en 6 pasos."],
+["✍️","1. Agrega un nombre","Escribe el nombre del lugar arriba y toca Agregar.\nCon 📋 puedes pegar un texto que ya copiaste."],
+["🔗","2. Pega el link","En Google Maps toca Compartir → Copiar enlace.\nVuelve aquí y toca 📋 Pegar link."],
+["📝","3. Escribe una referencia","Anota dónde queda: “frente al parque”, “2.º piso”, etc.\nEs opcional y también se puede buscar."],
+["🙈","4. Guardar y ocultar","Toca Guardar y ocultar: el link desaparece pero queda vinculado.\nToca el nombre para abrirlo en Maps."],
+["🔍","5. Buscar y editar","Usa la lupa para filtrar por nombre o referencia.\nCada lugar se puede editar o borrar."],
+["☁️","6. No pierdas nada","💾 Exportar guarda un respaldo en un archivo.\n☁️ Iniciar con Google guarda tus lugares en la nube."]];
+var ti=0;
+function showT(){var s=TS[ti];$("tIc").textContent=s[0];$("tTi").textContent=s[1];$("tTx").textContent=s[2];
+  $("tDots").innerHTML=TS.map(function(_,i){return '<i class="'+(i===ti?"a":"")+'"></i>'}).join("");
+  $("tPr").style.visibility=ti?"visible":"hidden";$("tNx").textContent=ti===TS.length-1?"¡Listo!":"Siguiente";
+  var b=$("tBx");b.style.animation="none";void b.offsetWidth;b.style.animation="pop .35s ease both"}
+function openT(){ti=0;showT();$("tut").classList.add("on")}
+function closeT(){$("tut").classList.remove("on");try{localStorage.setItem("lugares_tut","1")}catch(e){}}
+$("tNx").onclick=function(){if(ti<TS.length-1){ti++;showT()}else closeT()};
+$("tPr").onclick=function(){if(ti>0){ti--;showT()}};
+$("tSk").onclick=closeT;$("ayuda").onclick=openT;
+setTimeout(function(){var s=$("splash");s.classList.add("hide");setTimeout(function(){s.remove();var v=null;try{v=localStorage.getItem("lugares_tut")}catch(e){}if(!v)openT()},450)},1400);
 load();render();ui();initCloud();
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(function(){})}
 })();
