@@ -42,11 +42,6 @@ button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
 .card.pop{animation:pop .45s ease both}
 .card.ok{animation:ok .7s ease-out}
 .card.out{animation:out .26s ease forwards}
-#splash{position:fixed;inset:0;z-index:50;background:var(--pri);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .4s}
-#splash.hide{opacity:0;pointer-events:none}
-#splash .pin{font-size:72px;animation:sp .9s ease both}
-#splash b{font-size:26px;margin-top:10px;animation:fi .6s .4s ease both}
-main{animation:fi .5s .8s ease both}
 #tut{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px}
 #tut.on{display:flex}
 #tut .bx{background:var(--card);border-radius:18px;max-width:420px;width:100%;padding:22px;text-align:center}
@@ -61,7 +56,6 @@ main{animation:fi .5s .8s ease both}
 </style>
 </head>
 <body>
-<div id="splash"><div class="pin">📍</div><b>Mis Lugares</b></div>
 <main>
 <h1>📍 Mis Lugares</h1>
 <div class="bar">
@@ -190,7 +184,7 @@ function closeT(){$("tut").classList.remove("on");try{localStorage.setItem("luga
 $("tNx").onclick=function(){if(ti<TS.length-1){ti++;showT()}else closeT()};
 $("tPr").onclick=function(){if(ti>0){ti--;showT()}};
 $("tSk").onclick=closeT;$("ayuda").onclick=openT;
-setTimeout(function(){var s=$("splash");s.classList.add("hide");setTimeout(function(){s.remove();var v=null;try{v=localStorage.getItem("lugares_tut")}catch(e){}if(!v)openT()},450)},1400);
+var v=null;try{v=localStorage.getItem("lugares_tut")}catch(e){}if(!v)openT();
 load();render();ui();initCloud();
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(function(){})}
 })();
