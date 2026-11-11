@@ -14,20 +14,22 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:640px;margin:0 auto;padding:16px}
-h1{font-size:22px;margin:4px 0 14px}
+h1{font-size:22px;margin:4px 0 10px}
 .row{display:flex;gap:8px}
 input,textarea{width:100%;font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px}
-textarea{resize:vertical;min-height:70px}
+textarea{resize:vertical;min-height:64px;margin-top:8px}
 button{font:inherit;border:0;border-radius:12px;padding:11px 14px;background:var(--pri);color:#fff;cursor:pointer}
 button.s{background:transparent;color:var(--pri);border:1px solid var(--bd)}
 button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
-#buscar{margin-top:12px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px;margin-top:12px}
-.top{display:flex;align-items:center;gap:8px}
-.nm{flex:1;font-weight:600;word-break:break-word;background:none;color:var(--tx);text-align:left;padding:6px;border:0}
+.nm{display:block;width:100%;font-weight:600;word-break:break-word;background:none;color:var(--tx);text-align:left;padding:6px;border:0}
 .nm.on{color:var(--pri)}
+.ref{color:var(--mut);font-size:14px;padding:0 6px;white-space:pre-wrap;word-break:break-word}
 .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.box{margin-top:10px}
+.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.bar button{padding:8px 10px;font-size:14px}
+.st{color:var(--mut);font-size:13px}
+#buscar{margin-top:12px}
 .hint{color:var(--mut);font-size:13px;margin-top:6px}
 .empty{color:var(--mut);text-align:center;margin-top:40px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -37,86 +39,108 @@ button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
 <body>
 <main>
 <h1>📍 Mis Lugares</h1>
+<div class="bar">
+  <button class="s" id="cuenta">☁️ Iniciar con Google</button>
+  <button class="s" id="exp">💾 Exportar</button>
+  <button class="s" id="imp">📂 Importar</button>
+  <input type="file" id="file" accept=".json,application/json" hidden>
+  <span class="st" id="st"></span>
+</div>
 <div class="row">
   <input id="nuevo" placeholder="Escribe un nombre…" autocomplete="off">
   <button class="s" id="pegarNombre" title="Pegar">📋</button>
   <button id="agregar">Agregar</button>
 </div>
-<input id="buscar" type="search" placeholder="🔍 Buscar por nombre…" autocomplete="off">
+<input id="buscar" type="search" placeholder="🔍 Buscar por nombre o referencia…" autocomplete="off">
 <div id="lista"></div>
 <p class="hint">Toca un nombre para abrir su link en Google Maps. Los links quedan ocultos.</p>
 </main>
 <div class="toast" id="toast"></div>
 <script>
 (function(){
-var KEY="lugares_v1",items=[],mem=null;
-function load(){try{var r=localStorage.getItem(KEY);if(r)items=JSON.parse(r)||[]}catch(e){items=mem||[]}}
-function save(){mem=items;try{localStorage.setItem(KEY,JSON.stringify(items))}catch(e){}}
-function toast(t){var el=document.getElementById("toast");el.textContent=t;el.classList.add("show");setTimeout(function(){el.classList.remove("show")},1800)}
+// ===== CONFIGURACIÓN DE FIREBASE (pega aquí tus datos; ver guía) =====
+var FB={apiKey:"",authDomain:"",projectId:"",appId:""};
+// ======================================================================
+var KEY="lugares_v1",items=[],mem=null,user=null,db=null,timer=null,openBox={};
+var $=function(i){return document.getElementById(i)};
+function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2000)}
+function setSt(t){$("st").textContent=t}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
-var openBox={};
-function readClip(cb){
-  if(navigator.clipboard&&navigator.clipboard.readText){
-    navigator.clipboard.readText().then(cb).catch(function(){toast("Mantén pulsado en el cuadro y elige Pegar")});
-  }else toast("Mantén pulsado en el cuadro y elige Pegar");
-}
-function normalize(l){l=(l||"").trim();return l}
-function abrir(l){
-  l=normalize(l);if(!l)return;
-  if(!/^[a-z][a-z0-9+.-]*:/i.test(l))l="https://"+l;
-  window.open(l,"_blank","noopener");
-}
 function norm(s){return (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")}
+function load(){try{var r=localStorage.getItem(KEY);if(r)items=JSON.parse(r)||[]}catch(e){items=mem||[]}
+  items.forEach(function(x,i){if(!x.c)x.c=1e12-i;if(!x.t)x.t=x.c;if(x.ref==null)x.ref=""})}
+function save(){mem=items;try{localStorage.setItem(KEY,JSON.stringify(items))}catch(e){}push()}
+function push(){if(!user||!db)return;clearTimeout(timer);setSt("☁️ Guardando…");
+  timer=setTimeout(function(){db.collection("users").doc(user.uid).set({items:items,t:Date.now()})
+    .then(function(){setSt("☁️ Sincronizado")}).catch(function(){setSt("⚠️ Sin conexión")})},700)}
+function merge(a){var m={};items.forEach(function(x){m[x.id]=x});
+  (Array.isArray(a)?a:[]).forEach(function(x){if(!x||typeof x.id!=="string"||typeof x.name!=="string")return;
+    var y=m[x.id];if(!y||(x.t||0)>(y.t||0))m[x.id]={id:x.id,name:x.name,link:x.link||"",ref:x.ref||"",c:x.c||0,t:x.t||0,done:!!x.done,del:!!x.del}});
+  items=Object.keys(m).map(function(k){return m[k]}).sort(function(a,b){return (b.c||0)-(a.c||0)})}
+function readClip(cb){if(navigator.clipboard&&navigator.clipboard.readText)navigator.clipboard.readText().then(cb).catch(function(){toast("Mantén pulsado en el cuadro y elige Pegar")});else toast("Mantén pulsado en el cuadro y elige Pegar")}
+function abrir(l){l=(l||"").trim();if(!l)return;if(!/^[a-z][a-z0-9+.-]*:/i.test(l))l="https://"+l;window.open(l,"_blank","noopener")}
+function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+function btn(c,x,f){var b=el("button",c,x);b.onclick=f;return b}
 function render(){
-  var c=document.getElementById("lista");c.innerHTML="";
-  var q=norm(document.getElementById("buscar").value.trim());
-  var vis=items.filter(function(x){return !q||norm(x.name).indexOf(q)!==-1});
-  if(!items.length){c.innerHTML='<p class="empty">Aún no hay nombres. Agrega el primero arriba.</p>';return}
-  if(!vis.length){c.innerHTML='<p class="empty">Ningún nombre coincide con la búsqueda.</p>';return}
+  var c=$("lista");c.innerHTML="";
+  var q=norm($("buscar").value.trim());
+  var act=items.filter(function(x){return !x.del});
+  var vis=act.filter(function(x){return !q||norm(x.name+" "+x.ref).indexOf(q)!==-1});
+  if(!act.length){c.innerHTML='<p class="empty">Aún no hay nombres. Agrega el primero arriba.</p>';return}
+  if(!vis.length){c.innerHTML='<p class="empty">Nada coincide con la búsqueda.</p>';return}
   vis.forEach(function(it){
-    var card=document.createElement("div");card.className="card";
-    var top=document.createElement("div");top.className="top";
-    var nm=document.createElement("button");nm.className="nm"+(it.link?" on":"");
-    nm.textContent=(it.link?"📍 ":"")+it.name;
-    nm.onclick=function(){it.link?abrir(it.link):(openBox[it.id]=true,render())};
-    top.appendChild(nm);card.appendChild(top);
-    var showBox=openBox[it.id]||!it.link;
-    if(showBox){
-      var b=document.createElement("div");b.className="box";
-      var ta=document.createElement("textarea");ta.placeholder="Pega aquí el link de Google Maps";ta.value=it.link||"";
-      var r=document.createElement("div");r.className="acts";
-      var p=document.createElement("button");p.className="s";p.textContent="📋 Pegar";
-      p.onclick=function(){readClip(function(t){ta.value=t})};
-      var g=document.createElement("button");g.textContent="Guardar y ocultar";
-      g.onclick=function(){it.link=ta.value;delete openBox[it.id];save();render();toast("Link guardado")};
-      r.appendChild(p);r.appendChild(g);b.appendChild(ta);b.appendChild(r);card.appendChild(b);
-      setTimeout(function(){if(!it.link&&openBox[it.id]===undefined){}},0);
+    var card=el("div","card");
+    card.appendChild(btn("nm"+(it.link?" on":""),(it.link?"📍 ":"")+it.name,function(){if(it.link)abrir(it.link);else{openBox[it.id]=true;render()}}));
+    if(it.ref)card.appendChild(el("div","ref","📝 "+it.ref));
+    if(openBox[it.id]||(!it.link&&!it.done)){
+      var tl=el("textarea");tl.placeholder="Pega aquí el link de Google Maps";tl.value=it.link||"";
+      var tr=el("textarea");tr.placeholder="Referencia escrita (ej: frente al parque, 2.º piso, local 5)";tr.value=it.ref||"";
+      var r=el("div","acts");
+      r.appendChild(btn("s","📋 Pegar link",function(){readClip(function(t){tl.value=t})}));
+      r.appendChild(btn("","Guardar y ocultar",function(){it.link=tl.value;it.ref=tr.value;it.done=true;it.t=Date.now();delete openBox[it.id];save();render();toast("Guardado")}));
+      card.appendChild(tl);card.appendChild(tr);card.appendChild(r);
     }else{
-      var a=document.createElement("div");a.className="acts";
-      var o=document.createElement("button");o.textContent="Abrir en Maps";o.onclick=function(){abrir(it.link)};
-      var e=document.createElement("button");e.className="s";e.textContent="Editar link";e.onclick=function(){openBox[it.id]=true;render()};
-      a.appendChild(o);a.appendChild(e);card.appendChild(a);
+      var a=el("div","acts");
+      if(it.link)a.appendChild(btn("","Abrir en Maps",function(){abrir(it.link)}));
+      a.appendChild(btn("s","Editar link y referencia",function(){openBox[it.id]=true;render()}));
+      card.appendChild(a);
     }
-    var m=document.createElement("div");m.className="acts";
-    var rn=document.createElement("button");rn.className="s";rn.textContent="✏️ Nombre";
-    rn.onclick=function(){var n=prompt("Nuevo nombre",it.name);if(n!==null&&n!==""){it.name=n;save();render()}};
-    var dl=document.createElement("button");dl.className="d";dl.textContent="🗑 Borrar";
-    dl.onclick=function(){if(confirm("¿Borrar “"+it.name+"”?")){items=items.filter(function(x){return x.id!==it.id});save();render()}};
-    m.appendChild(rn);m.appendChild(dl);card.appendChild(m);
-    c.appendChild(card);
+    var m=el("div","acts");
+    m.appendChild(btn("s","✏️ Nombre",function(){var n=prompt("Nuevo nombre",it.name);if(n){it.name=n;it.t=Date.now();save();render()}}));
+    m.appendChild(btn("d","🗑 Borrar",function(){if(confirm("¿Borrar “"+it.name+"”?")){it.del=true;it.t=Date.now();save();render()}}));
+    card.appendChild(m);c.appendChild(card);
   });
 }
-var inp=document.getElementById("nuevo");
-function add(){
-  var n=inp.value;if(!n.length){toast("Escribe un nombre");return}
-  var it={id:uid(),name:n,link:""};items.unshift(it);openBox[it.id]=true;inp.value="";document.getElementById("buscar").value="";save();render();
-  var ta=document.querySelector("textarea");if(ta)ta.focus();
-}
-document.getElementById("agregar").onclick=add;
+var inp=$("nuevo");
+function add(){var n=inp.value;if(!n.length){toast("Escribe un nombre");return}
+  var now=Date.now(),it={id:uid(),name:n,link:"",ref:"",c:now,t:now};
+  items.unshift(it);openBox[it.id]=true;inp.value="";$("buscar").value="";save();render();
+  var ta=document.querySelector("textarea");if(ta)ta.focus()}
+$("agregar").onclick=add;
 inp.addEventListener("keydown",function(e){if(e.key==="Enter")add()});
-document.getElementById("pegarNombre").onclick=function(){readClip(function(t){inp.value=t})};
-document.getElementById("buscar").addEventListener("input",render);
-load();render();
+$("pegarNombre").onclick=function(){readClip(function(t){inp.value=t})};
+$("buscar").addEventListener("input",render);
+// Respaldo en archivo
+$("exp").onclick=function(){var b=new Blob([JSON.stringify(items.filter(function(x){return !x.del}))],{type:"application/json"});
+  var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="lugares-respaldo.json";document.body.appendChild(a);a.click();a.remove();toast("Respaldo descargado")};
+$("imp").onclick=function(){$("file").click()};
+$("file").onchange=function(){var f=this.files[0];if(!f)return;var r=new FileReader();
+  r.onload=function(){try{merge(JSON.parse(r.result));save();render();toast("Respaldo importado")}catch(e){toast("Archivo no válido")}};r.readAsText(f);this.value=""};
+// Nube (Firebase)
+function ui(){$("cuenta").textContent=user?"☁️ "+(user.email||"Cuenta")+" · Salir":"☁️ Iniciar con Google";if(!user)setSt("")}
+$("cuenta").onclick=function(){
+  if(!FB.apiKey){alert("La nube aún no está configurada. Falta pegar los datos de Firebase en el archivo index.html.");return}
+  if(!db){toast("Cargando… intenta de nuevo");return}
+  if(user){if(confirm("¿Cerrar sesión? Tus lugares seguirán en la nube."))firebase.auth().signOut();return}
+  firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(function(){toast("No se pudo iniciar sesión")})};
+function loadJs(u,cb){var s=document.createElement("script");s.src=u;s.onload=cb;document.head.appendChild(s)}
+function initCloud(){if(!FB.apiKey||!navigator.onLine&&false)return;
+  var b="https://www.gstatic.com/firebasejs/10.12.2/firebase-",n=0;
+  loadJs(b+"app-compat.js",function(){["auth","firestore"].forEach(function(k){loadJs(b+k+"-compat.js",function(){if(++n===2)start()})})})}
+function start(){firebase.initializeApp(FB);db=firebase.firestore();
+  firebase.auth().onAuthStateChanged(function(u){user=u;ui();
+    if(u){setSt("☁️ Sincronizando…");db.collection("users").doc(u.uid).get().then(function(d){if(d.exists)merge(d.data().items);save();render()}).catch(function(){setSt("⚠️ Sin conexión")})}})}
+load();render();ui();initCloud();
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(function(){})}
 })();
 </script>
