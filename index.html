@@ -59,7 +59,7 @@ button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
 <script>
 (function(){
 // ===== CONFIGURACIÓN DE FIREBASE (pega aquí tus datos; ver guía) =====
-var FB={apiKey:"AIzaSyAtO_fAZ9l2OwEgr_s1uWxMO3QfiEnliks",authDomain:"lugares-38fbb.firebaseapp.com",projectId:"lugares-38fbb",appId:"1:66967580012:web:975b4c30837e07f8359749"};
+var FB={apiKey:"",authDomain:"",projectId:"",appId:""};
 // ======================================================================
 var KEY="lugares_v1",items=[],mem=null,user=null,db=null,timer=null,openBox={};
 var $=function(i){return document.getElementById(i)};
@@ -132,7 +132,11 @@ $("cuenta").onclick=function(){
   if(!FB.apiKey){alert("La nube aún no está configurada. Falta pegar los datos de Firebase en el archivo index.html.");return}
   if(!db){toast("Cargando… intenta de nuevo");return}
   if(user){if(confirm("¿Cerrar sesión? Tus lugares seguirán en la nube."))firebase.auth().signOut();return}
-  firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(function(){toast("No se pudo iniciar sesión")})};
+  var au=firebase.auth(),pr=new firebase.auth.GoogleAuthProvider();
+  au.signInWithPopup(pr).catch(function(e){var c=(e&&e.code)||"desconocido";
+    if(c==="auth/popup-blocked"||c==="auth/popup-closed-by-user"||c==="auth/cancelled-popup-request"||c==="auth/operation-not-supported-in-this-environment"){
+      if(confirm("El inicio con ventana emergente falló ("+c+"). ¿Probar con redirección?")){au.signInWithRedirect(pr).catch(function(e2){alert("Error: "+((e2&&e2.code)||"desconocido"))})}
+    }else alert("Error: "+c+"\nCopia este código y envíaselo a Claude.")})};
 function loadJs(u,cb){var s=document.createElement("script");s.src=u;s.onload=cb;document.head.appendChild(s)}
 function initCloud(){if(!FB.apiKey||!navigator.onLine&&false)return;
   var b="https://www.gstatic.com/firebasejs/10.12.2/firebase-",n=0;
