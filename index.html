@@ -21,6 +21,7 @@ textarea{resize:vertical;min-height:70px}
 button{font:inherit;border:0;border-radius:12px;padding:11px 14px;background:var(--pri);color:#fff;cursor:pointer}
 button.s{background:transparent;color:var(--pri);border:1px solid var(--bd)}
 button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
+#buscar{margin-top:12px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px;margin-top:12px}
 .top{display:flex;align-items:center;gap:8px}
 .nm{flex:1;font-weight:600;word-break:break-word;background:none;color:var(--tx);text-align:left;padding:6px;border:0}
@@ -41,6 +42,7 @@ button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
   <button class="s" id="pegarNombre" title="Pegar">📋</button>
   <button id="agregar">Agregar</button>
 </div>
+<input id="buscar" type="search" placeholder="🔍 Buscar por nombre…" autocomplete="off">
 <div id="lista"></div>
 <p class="hint">Toca un nombre para abrir su link en Google Maps. Los links quedan ocultos.</p>
 </main>
@@ -64,10 +66,14 @@ function abrir(l){
   if(!/^[a-z][a-z0-9+.-]*:/i.test(l))l="https://"+l;
   window.open(l,"_blank","noopener");
 }
+function norm(s){return (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")}
 function render(){
   var c=document.getElementById("lista");c.innerHTML="";
+  var q=norm(document.getElementById("buscar").value.trim());
+  var vis=items.filter(function(x){return !q||norm(x.name).indexOf(q)!==-1});
   if(!items.length){c.innerHTML='<p class="empty">Aún no hay nombres. Agrega el primero arriba.</p>';return}
-  items.forEach(function(it){
+  if(!vis.length){c.innerHTML='<p class="empty">Ningún nombre coincide con la búsqueda.</p>';return}
+  vis.forEach(function(it){
     var card=document.createElement("div");card.className="card";
     var top=document.createElement("div");top.className="top";
     var nm=document.createElement("button");nm.className="nm"+(it.link?" on":"");
@@ -103,12 +109,13 @@ function render(){
 var inp=document.getElementById("nuevo");
 function add(){
   var n=inp.value;if(!n.length){toast("Escribe un nombre");return}
-  var it={id:uid(),name:n,link:""};items.unshift(it);openBox[it.id]=true;inp.value="";save();render();
+  var it={id:uid(),name:n,link:""};items.unshift(it);openBox[it.id]=true;inp.value="";document.getElementById("buscar").value="";save();render();
   var ta=document.querySelector("textarea");if(ta)ta.focus();
 }
 document.getElementById("agregar").onclick=add;
 inp.addEventListener("keydown",function(e){if(e.key==="Enter")add()});
 document.getElementById("pegarNombre").onclick=function(){readClip(function(t){inp.value=t})};
+document.getElementById("buscar").addEventListener("input",render);
 load();render();
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(function(){})}
 })();
