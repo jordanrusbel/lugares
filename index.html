@@ -29,7 +29,15 @@ button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
 .bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .bar button{padding:8px 10px;font-size:14px}
 .st{color:var(--mut);font-size:13px}
-#buscar{margin-top:12px}
+.srch{position:relative;margin:2px 0 14px}
+.srch svg{position:absolute;left:15px;top:50%;transform:translateY(-50%);width:18px;height:18px;stroke:var(--mut);fill:none;stroke-width:2.4;stroke-linecap:round;pointer-events:none}
+.srch input{appearance:none;-webkit-appearance:none;border:0;border-radius:999px;padding:12px 16px 12px 44px;background:rgba(120,130,150,.16)}
+.srch input:focus{outline:2px solid var(--pri)}
+.addbox{background:var(--card);border:1px solid var(--bd);border-left:4px solid var(--pri);border-radius:14px;padding:10px 12px}
+.addbox .lbl{font-size:13px;font-weight:600;color:var(--pri);margin-bottom:8px}
+.mini{position:relative;width:220px;max-width:100%;height:110px;overflow:hidden;border-radius:10px;margin:8px 6px 0;background:#e5e7eb;cursor:pointer}
+.pin2{position:absolute;transform:translate(-50%,-90%);font-size:22px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+.att{position:absolute;right:3px;bottom:2px;font-size:9px;background:rgba(255,255,255,.78);color:#333;padding:0 3px;border-radius:3px}
 select{flex:1;min-width:140px;font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:9px}
 .hint{color:var(--mut);font-size:13px;margin-top:6px}
 .empty{color:var(--mut);text-align:center;margin-top:40px}
@@ -68,12 +76,13 @@ select{flex:1;min-width:140px;font:inherit;color:var(--tx);background:var(--card
   <span class="st" id="st"></span>
 </div>
 <div class="bar" id="comp" style="display:none"><select id="sel"></select><button class="s" id="nueva">➕ Lista compartida</button><button class="s" id="inv">👥 Miembros</button></div>
+<div class="srch"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 L21 21"/></svg><input id="buscar" type="search" placeholder="Buscar por nombre o referencia…" autocomplete="off"></div>
+<div class="addbox"><div class="lbl">➕ Nuevo lugar</div>
 <div class="row">
-  <input id="nuevo" placeholder="Escribe un nombre…" autocomplete="off">
+  <input id="nuevo" placeholder="Escribe el nombre…" autocomplete="off">
   <button class="s" id="pegarNombre" title="Pegar">📋</button>
   <button id="agregar">Agregar</button>
-</div>
-<input id="buscar" type="search" placeholder="🔍 Buscar por nombre o referencia…" autocomplete="off">
+</div></div>
 <div id="lista"></div>
 <p class="hint">Toca un nombre para abrir su link en Google Maps. Los links quedan ocultos.</p>
 </main>
@@ -85,7 +94,7 @@ select{flex:1;min-width:140px;font:inherit;color:var(--tx);background:var(--card
 // ===== Los datos de Firebase ahora van en el archivo config.js =====
 var FB=window.FB_CONFIG||{apiKey:""};
 // ======================================================================
-var KEY="lugares_v1",items=[],mem=null,user=null,db=null,timer=null,openBox={},anim={},cur="me",shared={},unsub=null,pend=null,stim={};
+var KEY="lugares_v1",items=[],mem=null,user=null,db=null,timer=null,openBox={},anim={},cur="me",shared={},unsub=null,pend=null,stim={},picked=false;
 var $=function(i){return document.getElementById(i)};
 function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2000)}
 function setSt(t){$("st").textContent=t}
@@ -105,7 +114,20 @@ function merge(a){items=mergeL(items,a)}
 function list(){return cur==="me"?items:(shared[cur]?shared[cur].items:[])}
 function cur_it(id){return list().filter(function(x){return x.id===id})[0]}
 function readClip(cb){if(navigator.clipboard&&navigator.clipboard.readText)navigator.clipboard.readText().then(cb).catch(function(){toast("Mantén pulsado en el cuadro y elige Pegar")});else toast("Mantén pulsado en el cuadro y elige Pegar")}
-function abrir(l){l=(l||"").trim();if(!l)return;if(!/^[a-z][a-z0-9+.-]*:/i.test(l))l="https://"+l;window.open(l,"_blank","noopener")}
+function coords(l){l=l||"";try{l=decodeURIComponent(l)}catch(e){}
+  var m=l.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)||l.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)||l.match(/[?&](?:q|ll|query|center|destination)=(-?\d+\.\d+)[,+ ]+(-?\d+\.\d+)/)||l.match(/^\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*$/);
+  if(!m)return null;var a=parseFloat(m[1]),b=parseFloat(m[2]);return Math.abs(a)<=85&&Math.abs(b)<=180?[a,b]:null}
+function thumb(l){var c=coords(l);if(!c)return null;
+  var z=17,n=Math.pow(2,z),x=(c[1]+180)/360*n,r=c[0]*Math.PI/180,y=(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n,
+  tx=Math.floor(x),ty=Math.floor(y),px=(x-tx)*256,py=(y-ty)*256,W=220,H=110,
+  L=Math.min(0,Math.max(W-256,W/2-px)),T=Math.min(0,Math.max(H-256,H/2-py));
+  var d=el("div","mini");d.onclick=function(){abrir(l)};
+  var im=document.createElement("img");im.loading="lazy";im.alt="Mapa";
+  im.src="https://tile.openstreetmap.org/"+z+"/"+tx+"/"+ty+".png";
+  im.style.cssText="position:absolute;left:"+L+"px;top:"+T+"px;width:256px;height:256px";
+  var p=el("span","pin2","📍");p.style.left=(L+px)+"px";p.style.top=(T+py)+"px";
+  d.appendChild(im);d.appendChild(p);d.appendChild(el("span","att","© OpenStreetMap"));return d}
+function abrir(l){l=(l||"").trim();if(!l)return;var cc=l.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);if(cc)l="https://www.google.com/maps?q="+cc[1]+","+cc[2];if(!/^[a-z][a-z0-9+.-]*:/i.test(l))l="https://"+l;window.open(l,"_blank","noopener")}
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
 function btn(c,x,f){var b=el("button",c,x);b.onclick=f;return b}
 function render(){
@@ -119,6 +141,7 @@ function render(){
     var card=el("div","card"+(anim[it.id]?" "+anim[it.id]:""));delete anim[it.id];
     card.appendChild(btn("nm"+(it.link?" on":""),(it.link?"📍 ":"")+it.name,function(){if(it.link)abrir(it.link);else{openBox[it.id]=true;render()}}));
     if(it.ref)card.appendChild(el("div","ref","📝 "+it.ref));
+    var th=thumb(it.link);if(th)card.appendChild(th);
     if(openBox[it.id]||(!it.link&&!it.done)){
       var tl=el("textarea");tl.placeholder="Pega aquí el link de Google Maps";tl.value=it.link||"";
       var tr=el("textarea");tr.placeholder="Referencia escrita (ej: frente al parque, 2.º piso, local 5)";tr.value=it.ref||"";
@@ -166,14 +189,15 @@ $("cuenta").onclick=function(){
     }else alert("Error: "+c+"\nCopia este código y envíaselo a Claude.")})};
 // Listas compartidas
 function esc(t){return String(t).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-function buildSel(){var s=$("sel"),h='<option value="me">👤 Mis lugares (privada)</option>';
-  Object.keys(shared).forEach(function(k){h+='<option value="'+k+'">👥 '+esc(shared[k].name)+'</option>'});
+function sk(){return Object.keys(shared).sort(function(a,b){return shared[a].name.localeCompare(shared[b].name)})}
+function buildSel(){var s=$("sel"),h='';
+  sk().forEach(function(k){h+='<option value="'+k+'">👥 '+esc(shared[k].name)+'</option>'});h+='<option value="me">👤 Mis lugares (privada)</option>';
   s.innerHTML=h;s.value=cur;$("comp").style.display=user?"flex":"none";$("inv").style.display=cur==="me"?"none":""}
 function refresh(){var a=document.activeElement;if(a&&$("lista").contains(a)&&(a.tagName==="TEXTAREA"||a.tagName==="INPUT"))return;render()}
 function listen(){if(unsub)unsub();var em=(user.email||"").toLowerCase();
   unsub=db.collection("listas").where("emails","array-contains",em).onSnapshot(function(s){
     var n={};s.forEach(function(d){var v=d.data(),o=shared[d.id];n[d.id]={id:d.id,name:v.name||"Lista",owner:v.owner,emails:v.emails||[],items:mergeL(o?o.items:[],v.items)}});
-    shared=n;if(pend&&shared[pend]){cur=pend;pend=null}if(cur!=="me"&&!shared[cur])cur="me";
+    shared=n;if(!picked){picked=true;var ks=sk();if(ks.length)cur=ks[0]}if(pend&&shared[pend]){cur=pend;pend=null}if(cur!=="me"&&!shared[cur])cur="me";
     buildSel();refresh()},function(){setSt("⚠️ Sin conexión a las listas")})}
 function pushS(id){if(!shared[id]||!db)return;clearTimeout(stim[id]);setSt("☁️ Guardando…");
   stim[id]=setTimeout(function(){var r=db.collection("listas").doc(id);
@@ -199,7 +223,7 @@ function initCloud(){if(!FB.apiKey||!navigator.onLine&&false)return;
 function start(){firebase.initializeApp(FB);db=firebase.firestore();
   firebase.auth().onAuthStateChanged(function(u){user=u;ui();
     if(u){setSt("☁️ Sincronizando…");db.collection("users").doc(u.uid).get().then(function(d){if(d.exists)merge(d.data().items);var c=cur;cur="me";save();cur=c;render()}).catch(function(){setSt("⚠️ Sin conexión")});listen()}
-    else{if(unsub){unsub();unsub=null}shared={};cur="me";buildSel();render()}})}
+    else{if(unsub){unsub();unsub=null}shared={};cur="me";picked=false;buildSel();render()}})}
 // Tutorial
 var TS=[["📍","Bienvenido","Aquí guardas lugares con su link de Google Maps oculto.\nTe muestro cómo en 7 pasos."],
 ["✍️","1. Agrega un nombre","Escribe el nombre del lugar arriba y toca Agregar.\nCon 📋 puedes pegar un texto que ya copiaste."],
