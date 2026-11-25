@@ -30,6 +30,7 @@ button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
 .bar button{padding:8px 10px;font-size:14px}
 .st{color:var(--mut);font-size:13px}
 #buscar{margin-top:12px}
+select{flex:1;min-width:140px;font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:9px}
 .hint{color:var(--mut);font-size:13px;margin-top:6px}
 .empty{color:var(--mut);text-align:center;margin-top:40px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -66,6 +67,7 @@ button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
   <input type="file" id="file" accept=".json,application/json" hidden>
   <span class="st" id="st"></span>
 </div>
+<div class="bar" id="comp" style="display:none"><select id="sel"></select><button class="s" id="nueva">➕ Lista compartida</button><button class="s" id="inv">👥 Miembros</button></div>
 <div class="row">
   <input id="nuevo" placeholder="Escribe un nombre…" autocomplete="off">
   <button class="s" id="pegarNombre" title="Pegar">📋</button>
@@ -83,7 +85,7 @@ button.d{background:transparent;color:var(--danger);border:1px solid var(--bd)}
 // ===== Los datos de Firebase ahora van en el archivo config.js =====
 var FB=window.FB_CONFIG||{apiKey:""};
 // ======================================================================
-var KEY="lugares_v1",items=[],mem=null,user=null,db=null,timer=null,openBox={},anim={};
+var KEY="lugares_v1",items=[],mem=null,user=null,db=null,timer=null,openBox={},anim={},cur="me",shared={},unsub=null,pend=null,stim={};
 var $=function(i){return document.getElementById(i)};
 function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2000)}
 function setSt(t){$("st").textContent=t}
@@ -91,14 +93,17 @@ function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2
 function norm(s){return (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")}
 function load(){try{var r=localStorage.getItem(KEY);if(r)items=JSON.parse(r)||[]}catch(e){items=mem||[]}
   items.forEach(function(x,i){if(!x.c)x.c=1e12-i;if(!x.t)x.t=x.c;if(x.ref==null)x.ref=""})}
-function save(){mem=items;try{localStorage.setItem(KEY,JSON.stringify(items))}catch(e){}push()}
+function save(){if(cur!=="me"){pushS(cur);return}mem=items;try{localStorage.setItem(KEY,JSON.stringify(items))}catch(e){}push()}
 function push(){if(!user||!db)return;clearTimeout(timer);setSt("☁️ Guardando…");
   timer=setTimeout(function(){db.collection("users").doc(user.uid).set({items:items,t:Date.now()})
     .then(function(){setSt("☁️ Sincronizado")}).catch(function(){setSt("⚠️ Sin conexión")})},700)}
-function merge(a){var m={};items.forEach(function(x){m[x.id]=x});
+function mergeL(l,a){var m={};(l||[]).forEach(function(x){m[x.id]=x});
   (Array.isArray(a)?a:[]).forEach(function(x){if(!x||typeof x.id!=="string"||typeof x.name!=="string")return;
     var y=m[x.id];if(!y||(x.t||0)>(y.t||0))m[x.id]={id:x.id,name:x.name,link:x.link||"",ref:x.ref||"",c:x.c||0,t:x.t||0,done:!!x.done,del:!!x.del}});
-  items=Object.keys(m).map(function(k){return m[k]}).sort(function(a,b){return (b.c||0)-(a.c||0)})}
+  return Object.keys(m).map(function(k){return m[k]}).sort(function(a,b){return (b.c||0)-(a.c||0)})}
+function merge(a){items=mergeL(items,a)}
+function list(){return cur==="me"?items:(shared[cur]?shared[cur].items:[])}
+function cur_it(id){return list().filter(function(x){return x.id===id})[0]}
 function readClip(cb){if(navigator.clipboard&&navigator.clipboard.readText)navigator.clipboard.readText().then(cb).catch(function(){toast("Mantén pulsado en el cuadro y elige Pegar")});else toast("Mantén pulsado en el cuadro y elige Pegar")}
 function abrir(l){l=(l||"").trim();if(!l)return;if(!/^[a-z][a-z0-9+.-]*:/i.test(l))l="https://"+l;window.open(l,"_blank","noopener")}
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
@@ -106,7 +111,7 @@ function btn(c,x,f){var b=el("button",c,x);b.onclick=f;return b}
 function render(){
   var c=$("lista");c.innerHTML="";
   var q=norm($("buscar").value.trim());
-  var act=items.filter(function(x){return !x.del});
+  var act=list().filter(function(x){return !x.del});
   var vis=act.filter(function(x){return !q||norm(x.name+" "+x.ref).indexOf(q)!==-1});
   if(!act.length){c.innerHTML='<p class="empty">Aún no hay nombres. Agrega el primero arriba.</p>';return}
   if(!vis.length){c.innerHTML='<p class="empty">Nada coincide con la búsqueda.</p>';return}
@@ -119,7 +124,7 @@ function render(){
       var tr=el("textarea");tr.placeholder="Referencia escrita (ej: frente al parque, 2.º piso, local 5)";tr.value=it.ref||"";
       var r=el("div","acts");
       r.appendChild(btn("s","📋 Pegar link",function(){readClip(function(t){tl.value=t})}));
-      r.appendChild(btn("","Guardar y ocultar",function(){it.link=tl.value;it.ref=tr.value;it.done=true;it.t=Date.now();delete openBox[it.id];anim[it.id]="ok";save();render();toast("Guardado")}));
+      r.appendChild(btn("","Guardar y ocultar",function(){it=cur_it(it.id)||it;it.link=tl.value;it.ref=tr.value;it.done=true;it.t=Date.now();delete openBox[it.id];anim[it.id]="ok";save();render();toast("Guardado")}));
       card.appendChild(tl);card.appendChild(tr);card.appendChild(r);
     }else{
       var a=el("div","acts");
@@ -128,28 +133,28 @@ function render(){
       card.appendChild(a);
     }
     var m=el("div","acts");
-    m.appendChild(btn("s","✏️ Nombre",function(){var n=prompt("Nuevo nombre",it.name);if(n){it.name=n;it.t=Date.now();save();render()}}));
-    m.appendChild(btn("d","🗑 Borrar",function(){if(confirm("¿Borrar “"+it.name+"”?")){card.classList.add("out");setTimeout(function(){it.del=true;it.t=Date.now();save();render()},260)}}));
+    m.appendChild(btn("s","✏️ Nombre",function(){it=cur_it(it.id)||it;var n=prompt("Nuevo nombre",it.name);if(n){it.name=n;it.t=Date.now();save();render()}}));
+    m.appendChild(btn("d","🗑 Borrar",function(){if(confirm("¿Borrar “"+it.name+"”?")){card.classList.add("out");setTimeout(function(){it=cur_it(it.id)||it;it.del=true;it.t=Date.now();save();render()},260)}}));
     card.appendChild(m);c.appendChild(card);
   });
 }
 var inp=$("nuevo");
 function add(){var n=inp.value;if(!n.length){toast("Escribe un nombre");return}
   var now=Date.now(),it={id:uid(),name:n,link:"",ref:"",c:now,t:now};
-  items.unshift(it);anim[it.id]="pop";openBox[it.id]=true;inp.value="";$("buscar").value="";save();render();
+  list().unshift(it);anim[it.id]="pop";openBox[it.id]=true;inp.value="";$("buscar").value="";save();render();
   var ta=document.querySelector("textarea");if(ta)ta.focus()}
 $("agregar").onclick=add;
 inp.addEventListener("keydown",function(e){if(e.key==="Enter")add()});
 $("pegarNombre").onclick=function(){readClip(function(t){inp.value=t})};
 $("buscar").addEventListener("input",render);
 // Respaldo en archivo
-$("exp").onclick=function(){var b=new Blob([JSON.stringify(items.filter(function(x){return !x.del}))],{type:"application/json"});
+$("exp").onclick=function(){var b=new Blob([JSON.stringify(list().filter(function(x){return !x.del}))],{type:"application/json"});
   var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="lugares-respaldo.json";document.body.appendChild(a);a.click();a.remove();toast("Respaldo descargado")};
 $("imp").onclick=function(){$("file").click()};
 $("file").onchange=function(){var f=this.files[0];if(!f)return;var r=new FileReader();
-  r.onload=function(){try{merge(JSON.parse(r.result));save();render();toast("Respaldo importado")}catch(e){toast("Archivo no válido")}};r.readAsText(f);this.value=""};
+  r.onload=function(){try{var J=JSON.parse(r.result);if(cur==="me")merge(J);else if(shared[cur])shared[cur].items=mergeL(shared[cur].items,J);save();render();toast("Respaldo importado")}catch(e){toast("Archivo no válido")}};r.readAsText(f);this.value=""};
 // Nube (Firebase)
-function ui(){$("cuenta").textContent=user?"☁️ "+(user.email||"Cuenta")+" · Salir":"☁️ Iniciar con Google";if(!user)setSt("")}
+function ui(){$("cuenta").textContent=user?"☁️ "+(user.email||"Cuenta")+" · Salir":"☁️ Iniciar con Google";if(!user)setSt("");buildSel()}
 $("cuenta").onclick=function(){
   if(!FB.apiKey){alert("La nube aún no está configurada. Falta pegar los datos de Firebase en el archivo index.html.");return}
   if(!db){toast("Cargando… intenta de nuevo");return}
@@ -159,21 +164,51 @@ $("cuenta").onclick=function(){
     if(c==="auth/popup-blocked"||c==="auth/popup-closed-by-user"||c==="auth/cancelled-popup-request"||c==="auth/operation-not-supported-in-this-environment"){
       if(confirm("El inicio con ventana emergente falló ("+c+"). ¿Probar con redirección?")){au.signInWithRedirect(pr).catch(function(e2){alert("Error: "+((e2&&e2.code)||"desconocido"))})}
     }else alert("Error: "+c+"\nCopia este código y envíaselo a Claude.")})};
+// Listas compartidas
+function esc(t){return String(t).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function buildSel(){var s=$("sel"),h='<option value="me">👤 Mis lugares (privada)</option>';
+  Object.keys(shared).forEach(function(k){h+='<option value="'+k+'">👥 '+esc(shared[k].name)+'</option>'});
+  s.innerHTML=h;s.value=cur;$("comp").style.display=user?"flex":"none";$("inv").style.display=cur==="me"?"none":""}
+function refresh(){var a=document.activeElement;if(a&&$("lista").contains(a)&&(a.tagName==="TEXTAREA"||a.tagName==="INPUT"))return;render()}
+function listen(){if(unsub)unsub();var em=(user.email||"").toLowerCase();
+  unsub=db.collection("listas").where("emails","array-contains",em).onSnapshot(function(s){
+    var n={};s.forEach(function(d){var v=d.data(),o=shared[d.id];n[d.id]={id:d.id,name:v.name||"Lista",owner:v.owner,emails:v.emails||[],items:mergeL(o?o.items:[],v.items)}});
+    shared=n;if(pend&&shared[pend]){cur=pend;pend=null}if(cur!=="me"&&!shared[cur])cur="me";
+    buildSel();refresh()},function(){setSt("⚠️ Sin conexión a las listas")})}
+function pushS(id){if(!shared[id]||!db)return;clearTimeout(stim[id]);setSt("☁️ Guardando…");
+  stim[id]=setTimeout(function(){var r=db.collection("listas").doc(id);
+    db.runTransaction(function(t){return t.get(r).then(function(d){var m=mergeL(shared[id]?shared[id].items:[],d.exists?d.data().items:[]);t.update(r,{items:m,t:Date.now()})})})
+    .then(function(){setSt("☁️ Sincronizado")}).catch(function(){setSt("⚠️ Sin conexión")})},600)}
+$("sel").onchange=function(){cur=this.value;$("buscar").value="";buildSel();render();setSt("")};
+$("nueva").onclick=function(){if(!user||!db)return;var n=prompt("Nombre de la nueva lista compartida");if(!n)return;
+  db.collection("listas").add({name:n,owner:user.uid,emails:[(user.email||"").toLowerCase()],items:[],t:Date.now()})
+    .then(function(r){pend=r.id;toast("Lista creada")}).catch(function(){toast("No se pudo crear la lista")})};
+$("inv").onclick=function(){var s=shared[cur];if(!s)return;var own=s.owner===user.uid,msg="Miembros:\n"+s.emails.join("\n");
+  if(!own){alert(msg+"\n\nSolo quien creó la lista puede invitar o quitar personas.");return}
+  var v=prompt(msg+"\n\nEscribe el correo de Google a invitar.\nPara quitar a alguien escribe - y su correo (ej: -ana@gmail.com).\nPara eliminar la lista escribe BORRAR.","");
+  if(!v)return;v=v.trim();var r=db.collection("listas").doc(cur),F=firebase.firestore.FieldValue,p;
+  if(v==="BORRAR"){if(!confirm("¿Eliminar la lista “"+s.name+"” para todos?"))return;p=r.delete()}
+  else if(v.charAt(0)==="-"){var q=v.slice(1).trim().toLowerCase();if(q===(user.email||"").toLowerCase()){toast("No puedes quitarte a ti mismo");return}p=r.update({emails:F.arrayRemove(q)})}
+  else if(v.indexOf("@")>0)p=r.update({emails:F.arrayUnion(v.toLowerCase())});
+  else{toast("Escribe un correo válido");return}
+  p.then(function(){toast("Listo")}).catch(function(){toast("No se pudo")})};
 function loadJs(u,cb){var s=document.createElement("script");s.src=u;s.onload=cb;document.head.appendChild(s)}
 function initCloud(){if(!FB.apiKey||!navigator.onLine&&false)return;
   var b="https://www.gstatic.com/firebasejs/10.12.2/firebase-",n=0;
   loadJs(b+"app-compat.js",function(){["auth","firestore"].forEach(function(k){loadJs(b+k+"-compat.js",function(){if(++n===2)start()})})})}
 function start(){firebase.initializeApp(FB);db=firebase.firestore();
   firebase.auth().onAuthStateChanged(function(u){user=u;ui();
-    if(u){setSt("☁️ Sincronizando…");db.collection("users").doc(u.uid).get().then(function(d){if(d.exists)merge(d.data().items);save();render()}).catch(function(){setSt("⚠️ Sin conexión")})}})}
+    if(u){setSt("☁️ Sincronizando…");db.collection("users").doc(u.uid).get().then(function(d){if(d.exists)merge(d.data().items);var c=cur;cur="me";save();cur=c;render()}).catch(function(){setSt("⚠️ Sin conexión")});listen()}
+    else{if(unsub){unsub();unsub=null}shared={};cur="me";buildSel();render()}})}
 // Tutorial
-var TS=[["📍","Bienvenido","Aquí guardas lugares con su link de Google Maps oculto.\nTe muestro cómo en 6 pasos."],
+var TS=[["📍","Bienvenido","Aquí guardas lugares con su link de Google Maps oculto.\nTe muestro cómo en 7 pasos."],
 ["✍️","1. Agrega un nombre","Escribe el nombre del lugar arriba y toca Agregar.\nCon 📋 puedes pegar un texto que ya copiaste."],
 ["🔗","2. Pega el link","En Google Maps toca Compartir → Copiar enlace.\nVuelve aquí y toca 📋 Pegar link."],
 ["📝","3. Escribe una referencia","Anota dónde queda: “frente al parque”, “2.º piso”, etc.\nEs opcional y también se puede buscar."],
 ["🙈","4. Guardar y ocultar","Toca Guardar y ocultar: el link desaparece pero queda vinculado.\nToca el nombre para abrirlo en Maps."],
 ["🔍","5. Buscar y editar","Usa la lupa para filtrar por nombre o referencia.\nCada lugar se puede editar o borrar."],
-["☁️","6. No pierdas nada","💾 Exportar guarda un respaldo en un archivo.\n☁️ Iniciar con Google guarda tus lugares en la nube."]];
+["☁️","6. No pierdas nada","💾 Exportar guarda un respaldo en un archivo.\n☁️ Iniciar con Google guarda tus lugares en la nube."],
+["👥","7. Listas compartidas","Inicia sesión con Google, toca ➕ Lista compartida y luego 👥 Miembros para invitar por correo.\nTodos los invitados ven y editan los mismos lugares."]];
 var ti=0;
 function showT(){var s=TS[ti];$("tIc").textContent=s[0];$("tTi").textContent=s[1];$("tTx").textContent=s[2];
   $("tDots").innerHTML=TS.map(function(_,i){return '<i class="'+(i===ti?"a":"")+'"></i>'}).join("");
