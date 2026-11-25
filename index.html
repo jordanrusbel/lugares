@@ -185,7 +185,7 @@ $("cuenta").onclick=function(){
   var au=firebase.auth(),pr=new firebase.auth.GoogleAuthProvider();
   au.signInWithPopup(pr).catch(function(e){var c=(e&&e.code)||"desconocido";
     if(c==="auth/popup-blocked"||c==="auth/popup-closed-by-user"||c==="auth/cancelled-popup-request"||c==="auth/operation-not-supported-in-this-environment"){
-      if(confirm("El inicio con ventana emergente falló ("+c+"). ¿Probar con redirección?")){au.signInWithRedirect(pr).catch(function(e2){alert("Error: "+((e2&&e2.code)||"desconocido"))})}
+      if(confirm("Dentro de la app Android bloquea este inicio de sesión. ¿Abrir Chrome para iniciar sesión? Después cierra esta app del todo y ábrela de nuevo.")){location.href="intent://"+location.host+location.pathname+"#Intent;scheme=https;package=com.android.chrome;end"}
     }else alert("Error: "+c+"\nCopia este código y envíaselo a Claude.")})};
 // Listas compartidas
 function esc(t){return String(t).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
